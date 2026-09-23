@@ -56,6 +56,14 @@ func (r *Repository) Update(server *Server) error {
 	return nil
 }
 
+// UpdateCurrentPeers stores the peer count observed on the server's agent
+// without touching the rest of the row.
+func (r *Repository) UpdateCurrentPeers(id uuid.UUID, count int) error {
+	return r.db.Model(&Server{}).
+		Where("id = ?", id).
+		Update("current_peers", count).Error
+}
+
 func (r *Repository) Delete(id uuid.UUID) error {
 	result := r.db.Delete(&Server{}, id)
 	if result.Error != nil {

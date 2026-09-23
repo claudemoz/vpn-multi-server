@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+// AgentService is the contract between the control plane (the HTTP API) and
+// the agents running on each WireGuard server.
+//
+// The control plane is the gRPC *client*: it dials every server's
+// `grpc_endpoint` and pushes the desired peer set. The agent is the gRPC
+// *server*: it applies the changes on the local WireGuard interface (via
+// wgctrl) and reports the observed state (handshakes, traffic).
+package agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "backend/gen/agent/v1;agentv1";
+
+service AgentService {
+  // Health reports whether the agent is alive and which interface it manages.
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // GetInterface returns the current state of the managed interface,
+  // including every configured peer.
+  rpc GetInterface(GetInterfaceRequest) returns (GetInterfaceResponse);
+
+  // ListPeers returns the peers currently configured on the interface.
+  rpc ListPeers(ListPeersRequest) returns (ListPeersResponse);
+
+  // AddPeer adds or updates a single peer (idempotent).
+  rpc AddPeer(AddPeerRequest) returns (AddPeerResponse);
+
+  // RemovePeer removes the peer identified by its public key (idempotent).
+  rpc RemovePeer(RemovePeerRequest) returns (RemovePeerResponse);
+
+  // SyncPeers replaces the whole peer set with the given list. This is the
+  // reconciliation primitive used at startup and periodically by the
+  // control plane.
+  rpc SyncPeers(SyncPeersRequest) returns (SyncPeersResponse);
+}
+
+// Peer is the desired configuration of a WireGuard peer.
+message Peer {
+  string public_key = 1;
+  string preshared_key = 2;
+  // Optional "host:port". Empty for road-warrior clients.
+  string endpoint = 3;
+  // CIDRs routed to this peer, e.g. "10.8.0.5/32".
+  repeated string allowed_ips = 4;
+  // Persistent keepalive in seconds, 0 to disable.
+  int32 keepalive = 5;
+}
+
+// PeerStatus is the observed state of a peer on the interface.
+message PeerStatus {
+  Peer peer = 1;
+  // Zero/unset when no handshake ever happened.
+  google.protobuf.Timestamp last_handshake = 2;
+  int64 receive_bytes = 3;
+  int64 transmit_bytes = 4;
+}
+
+message InterfaceStatus {
+  string name = 1;
+  string public_key = 2;
+  int32 listen_port = 3;
+  repeated PeerStatus peers = 4;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  // Interface managed by this agent, e.g. "wg0".
+  string interface = 1;
+  // Backend in use: "wgctrl" or "memory".
+  string backend = 2;
+  // Agent build version.
+  string version = 3;
+  // True when the interface is reachable through the backend.
+  bool interface_up = 4;
+}
+
+message GetInterfaceRequest {}
+
+message GetInterfaceResponse {
+  InterfaceStatus interface = 1;
+}
+
+message ListPeersRequest {}
+
+message ListPeersResponse {
+  repeated PeerStatus peers = 1;
+}
+
+message AddPeerRequest {
+  Peer peer = 1;
+}
+
+message AddPeerResponse {}
+
+message RemovePeerRequest {
+  string public_key = 1;
+}
+
+message RemovePeerResponse {}
+
+message SyncPeersRequest {
+  repeated Peer peers = 1;
+}
+
+message SyncPeersResponse {
+  // Number of peers configured after the sync.
+  int32 peer_count = 1;
+}

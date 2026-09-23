@@ -4,6 +4,7 @@ import (
 	apperrors "backend/pkg/errors"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -58,6 +59,39 @@ func (r *Repository) FindAssignedIPsByServer(serverID uuid.UUID) ([]string, erro
 		return nil, err
 	}
 	return ips, nil
+}
+
+// FindActiveByServer returns the devices that must be configured as peers on
+// a server: not soft-deleted and not revoked.
+func (r *Repository) FindActiveByServer(serverID uuid.UUID) ([]Device, error) {
+	var devices []Device
+	err := r.db.
+		Where("server_id = ? AND revoked_at IS NULL", serverID).
+		Order("created_at ASC").
+		Find(&devices).Error
+	if err != nil {
+		return nil, err
+	}
+	return devices, nil
+}
+
+// UpdateLastHandshakes stores the handshake times reported by an agent,
+// keyed by device public key. Unknown keys are ignored.
+func (r *Repository) UpdateLastHandshakes(serverID uuid.UUID, handshakes map[string]time.Time) error {
+	if len(handshakes) == 0 {
+		return nil
+	}
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		for publicKey, at := range handshakes {
+			err := tx.Model(&Device{}).
+				Where("server_id = ? AND public_key = ?", serverID, publicKey).
+				Update("last_handshake", at).Error
+			if err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func (r *Repository) Update(device *Device) error {

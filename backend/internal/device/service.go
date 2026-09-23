@@ -1,6 +1,8 @@
 package device
 
 import (
+	"context"
+
 	vpnserver "backend/internal/vpn-server"
 	"backend/internal/wireguard"
 	apperrors "backend/pkg/errors"
@@ -14,13 +16,19 @@ type ServerProvider interface {
 }
 
 type Service struct {
-	repo    *Repository
-	servers ServerProvider
-	wg      *wireguard.Settings
+	repo      *Repository
+	servers   ServerProvider
+	wg        *wireguard.Settings
+	publisher PeerPublisher
 }
 
-func NewService(repo *Repository, servers ServerProvider, wg *wireguard.Settings) *Service {
-	return &Service{repo: repo, servers: servers, wg: wg}
+// NewService creates the device service. publisher may be nil when the API
+// runs without agents; peer changes are then only persisted.
+func NewService(repo *Repository, servers ServerProvider, wg *wireguard.Settings, publisher PeerPublisher) *Service {
+	if publisher == nil {
+		publisher = noopPublisher{}
+	}
+	return &Service{repo: repo, servers: servers, wg: wg, publisher: publisher}
 }
 
 func (s *Service) GetAll() ([]DeviceResponse, error) {
@@ -39,7 +47,7 @@ func (s *Service) GetByID(id uuid.UUID) (DeviceResponse, error) {
 	return ToResponse(*device), nil
 }
 
-func (s *Service) Create(userID uuid.UUID, req CreateDeviceRequest) (CreateDeviceResponse, error) {
+func (s *Service) Create(ctx context.Context, userID uuid.UUID, req CreateDeviceRequest) (CreateDeviceResponse, error) {
 	server, err := s.resolveServer(req.ServerID)
 	if err != nil {
 		return CreateDeviceResponse{}, err
@@ -73,10 +81,13 @@ func (s *Service) Create(userID uuid.UUID, req CreateDeviceRequest) (CreateDevic
 		return CreateDeviceResponse{}, err
 	}
 
+	synced := s.publishAdd(ctx, device)
+
 	return CreateDeviceResponse{
 		DeviceResponse: ToResponse(*device),
 		PrivateKey:     privateKey,
 		Config:         s.wg.ClientConfig(privateKey, device.AssignedIP, server.WGPublicKey, server.PublicEndpoint),
+		AgentSynced:    synced,
 	}, nil
 }
 
@@ -96,11 +107,15 @@ func (s *Service) ClientConfig(id uuid.UUID) (string, error) {
 	return s.wg.ClientConfig("", device.AssignedIP, server.WGPublicKey, server.PublicEndpoint), nil
 }
 
-func (s *Service) Update(id uuid.UUID, req UpdateDeviceRequest) (DeviceResponse, error) {
+func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateDeviceRequest) (DeviceResponse, error) {
 	device, err := s.repo.FindByID(id)
 	if err != nil {
 		return DeviceResponse{}, err
 	}
+
+	// Remember the peer as currently configured on its agent so we can
+	// remove it if the key, IP or server changes.
+	prevServerID, prevPublicKey, prevIP := device.ServerID, device.PublicKey, device.AssignedIP
 
 	serverChanged := req.ServerID != nil && *req.ServerID != device.ServerID.String()
 
@@ -146,11 +161,36 @@ func (s *Service) Update(id uuid.UUID, req UpdateDeviceRequest) (DeviceResponse,
 	if err := s.repo.Update(device); err != nil {
 		return DeviceResponse{}, err
 	}
+
+	peerChanged := device.ServerID != prevServerID ||
+		device.PublicKey != prevPublicKey ||
+		device.AssignedIP != prevIP
+
+	if peerChanged && !device.IsRevoked() {
+		// A key or server change leaves a stale peer behind; drop it before
+		// pushing the new one. Same server + same key means AddPeer simply
+		// replaces the AllowedIPs, so no removal is needed.
+		if device.ServerID != prevServerID || device.PublicKey != prevPublicKey {
+			s.publishRemove(ctx, prevServerID, prevPublicKey)
+		}
+		s.publishAdd(ctx, device)
+	}
+
 	return ToResponse(*device), nil
 }
 
-func (s *Service) Delete(id uuid.UUID) error {
-	return s.repo.Delete(id)
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	device, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.Delete(id); err != nil {
+		return err
+	}
+
+	s.publishRemove(ctx, device.ServerID, device.PublicKey)
+	return nil
 }
 
 type resolvedServer struct {

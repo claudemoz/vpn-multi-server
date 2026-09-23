@@ -275,10 +275,30 @@ Tout tourne sans base de données ni interface réseau : le module est de la log
 
 ---
 
-## 10. Ce qui reste à construire
+## 10. Pilotage à distance : agent et orchestrateur
 
-Le module est complet côté bibliothèque ; les briques suivantes l'utiliseront :
+Le `Client` de ce module n'est pas utilisé directement par l'API : il tourne dans l'**agent** (`cmd/agent`, `internal/agent`) installé sur chaque serveur VPN. L'API le pilote en **gRPC** via l'**orchestrateur** (`internal/orchestrator`).
 
-- **Agent** (`cmd/agent`, `internal/agent`) : tourne sur chaque serveur VPN, ouvre un `WGCtrlClient`, et applique via `SyncPeers` / `AddPeer` / `RemovePeer` les devices que l'API lui pousse en gRPC. Remonte les `PeerStatus` (handshake, trafic) pour alimenter `device.last_handshake`.
-- **Révocation** : un `POST /device/:id/revoke` renseignant `revoked_at` et déclenchant `RemovePeer` côté agent.
+```
+ API (control plane)                          Serveur VPN (fr-1)
+ ┌──────────────────────────┐   gRPC/TLS      ┌──────────────────────────┐
+ │ device.Service           │ ──AddPeer────▶  │ agent.Service            │
+ │   └─ orchestrator        │ ──RemovePeer──▶ │   └─ wireguard.Client    │
+ │ orchestrator.Reconciler  │ ──SyncPeers───▶ │        (WGCtrlClient)    │
+ │   (toutes les 30 s)      │ ◀─ListPeers───  │             │            │
+ └──────────────────────────┘                 │             ▼            │
+                                              │          wg0 (kernel)    │
+                                              └──────────────────────────┘
+```
+
+- **Contrat** : `api/proto/agent/v1/agent.proto` (code généré dans `gen/agent/v1`, `make proto`). Les conversions proto ↔ `wireguard.Peer` / `PeerStatus` vivent dans `internal/agentproto`.
+- **Agent** : expose `Health`, `GetInterface`, `ListPeers`, `AddPeer`, `RemovePeer`, `SyncPeers`. Authentification par token partagé (`AGENT_TOKEN`) et TLS optionnel. `AGENT_BACKEND=memory` permet de le lancer en local sans `wg0`.
+- **Orchestrateur** : un client gRPC par `server.grpc_endpoint` (pool de connexions). `device.Service` lui pousse chaque création / modification / suppression ; l'échec est journalisé (`agent_synced: false` dans la réponse) et rattrapé par le réconciliateur.
+- **Réconciliateur** : à intervalle régulier, pour chaque serveur actif, `SyncPeers` avec les devices non révoqués de la base, puis `ListPeers` pour alimenter `device.last_handshake` et `server.current_peers`.
+- **Endpoints admin** : `GET /server/:id/agent/status`, `GET /server/:id/agent/peers`, `POST /server/:id/agent/sync`.
+
+## 11. Ce qui reste à construire
+
+- **Révocation** : un `POST /device/:id/revoke` renseignant `revoked_at` ; le réconciliateur retirera alors le peer automatiquement, mais un `RemovePeer` immédiat serait préférable.
 - **Réallocation** si le `subnet` d'un serveur change alors qu'il a déjà des devices.
+- **mTLS** côté agent (aujourd'hui : TLS serveur + token).

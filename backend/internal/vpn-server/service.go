@@ -125,6 +125,11 @@ func (s *Service) Delete(id uuid.UUID) error {
 	return s.repo.Delete(id)
 }
 
+// SetCurrentPeers records the peer count reported by the server's agent.
+func (s *Service) SetCurrentPeers(id uuid.UUID, count int) error {
+	return s.repo.UpdateCurrentPeers(id, count)
+}
+
 func (s *Service) Exists(id uuid.UUID) error {
 	_, err := s.repo.FindByID(id)
 	return err

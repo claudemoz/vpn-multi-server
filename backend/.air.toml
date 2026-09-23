@@ -10,7 +10,7 @@ tmp_dir = "tmp"
 
   # Fichiers / dossiers à surveiller
   include_ext = ["go", "tpl", "tmpl", "html", "sql", "env"]
-  include_dir = ["cmd", "configs", "internal", "pkg", "migrations"]
+  include_dir = ["cmd", "configs", "internal", "pkg", "gen", "migrations"]
 
   # Fichiers / dossiers à ignorer
   exclude_dir = ["assets", "tmp", "vendor", "bin", "testdata"]

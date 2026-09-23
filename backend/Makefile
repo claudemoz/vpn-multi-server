@@ -1,6 +1,8 @@
 APP_NAME=wg-vpn-platform
 MAIN=./cmd/api
 BIN=bin/$(APP_NAME)
+AGENT_MAIN=./cmd/agent
+AGENT_BIN=bin/wg-agent
 
 DB_HOST?=localhost
 DB_PORT?=5432
@@ -15,7 +17,8 @@ SEED_DB_URL=$(DB_URL)&x-migrations-table=seed_schema_migrations
 
 .PHONY: migration migrate-up migrate-down migrate-version \
 	seed-migration seed-up seed-down seed-version \
-	run dev build test fmt tidy seed setup-db
+	run dev build test fmt tidy seed setup-db \
+	proto run-agent build-agent
 
 run:
 	go run $(MAIN)
@@ -25,6 +28,18 @@ dev:
 
 build:
 	go build -o $(BIN) $(MAIN)
+
+# Agent (runs on each WireGuard server). AGENT_BACKEND=memory lets you run it
+# locally without root or a wg0 interface.
+run-agent:
+	AGENT_BACKEND=$${AGENT_BACKEND:-memory} go run $(AGENT_MAIN)
+
+build-agent:
+	CGO_ENABLED=0 GOOS=$${GOOS:-linux} GOARCH=$${GOARCH:-amd64} go build -o $(AGENT_BIN) $(AGENT_MAIN)
+
+# Regenerate gRPC code from api/proto (see scripts/gen-proto.sh for tooling).
+proto:
+	./scripts/gen-proto.sh
 	
 test:
 	go test ./... -cover

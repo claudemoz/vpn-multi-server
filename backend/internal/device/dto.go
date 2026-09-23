@@ -36,4 +36,8 @@ type CreateDeviceResponse struct {
 	DeviceResponse
 	PrivateKey string `json:"private_key,omitempty"`
 	Config     string `json:"config"`
+	// AgentSynced is true when the peer was pushed to the server's agent
+	// immediately. When false the reconciler will apply it shortly; the
+	// tunnel may not work until then.
+	AgentSynced bool `json:"agent_synced"`
 }

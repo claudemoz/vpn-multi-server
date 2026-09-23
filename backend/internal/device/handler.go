@@ -53,7 +53,7 @@ func (h *Handler) Create(c *gin.Context) {
 		return
 	}
 
-	device, err := h.service.Create(userID.(uuid.UUID), req)
+	device, err := h.service.Create(c.Request.Context(), userID.(uuid.UUID), req)
 	if err != nil {
 		apperrors.Handle(c, err)
 		return
@@ -92,7 +92,7 @@ func (h *Handler) Update(c *gin.Context) {
 		return
 	}
 
-	device, err := h.service.Update(id, req)
+	device, err := h.service.Update(c.Request.Context(), id, req)
 	if err != nil {
 		apperrors.Handle(c, err)
 		return
@@ -107,7 +107,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
 		apperrors.Handle(c, err)
 		return
 	}

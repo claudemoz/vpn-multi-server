@@ -18,6 +18,12 @@ import (
 func main() {
 	cfg := config.Load()
 	app := app.New(cfg)
+	defer app.Close()
+
+	workersCtx, stopWorkers := context.WithCancel(context.Background())
+	defer stopWorkers()
+	app.Start(workersCtx)
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.App.Port,
 		Handler:           app.Router,
@@ -37,6 +43,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("shutdown signal received")
+	stopWorkers()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
