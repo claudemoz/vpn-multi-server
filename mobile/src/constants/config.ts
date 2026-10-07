@@ -4,7 +4,7 @@ import { Platform } from 'react-native';
 const API_PORT = 8080;
 const API_PREFIX = '/api/v1';
 
-const PROD_HTTP_BASE = ""
+const PROD_HTTP_BASE = "https://apivpn.tsiang.fr/v1"
   // process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') ??
   // 'https://api.example.com/api/v1';
 
@@ -17,7 +17,7 @@ const getDevHost = (): string => {
 
 /** Base URL HTTP (inclut /api/v1). */
 export function getHttpBaseURL(): string {
-  if (__DEV__) {
+  if (!__DEV__) {
     return `http://${getDevHost()}:${API_PORT}${API_PREFIX}`;
   }
   const configured = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '');

@@ -9,7 +9,6 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "bundleIdentifier": "com.wgvpn.platform",
-      "icon": "./assets/expo.icon",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Cette application utilise le réseau pour établir une connexion VPN WireGuard.",
         "UIBackgroundModes": ["network-authentication", "network"]
@@ -51,8 +50,7 @@
       ]
     ],
     "experiments": {
-      "typedRoutes": true,
-      "reactCompiler": true
+      "typedRoutes": true
     }
   }
 }

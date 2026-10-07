@@ -11,7 +11,8 @@ DB_PASSWORD?=postgres
 DB_NAME?=wg-vpn-platform
 DB_SSLMODE?=disable
 
-DB_URL?=postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
+# DB_URL?=postgres://$(DB_USER):$(DB_PASSWORD)@$(DB_HOST):$(DB_PORT)/$(DB_NAME)?sslmode=$(DB_SSLMODE)
+DB_URL?=postgresql://ujcnhcb4dml17onzefuv:YYAU4aYHKll0wB8kLosd@b7ibhmkkxeupqxodsndh-postgresql.services.clever-cloud.com:9292/b7ibhmkkxeupqxodsndh
 SEED_DIR=seed
 SEED_DB_URL=$(DB_URL)&x-migrations-table=seed_schema_migrations
 

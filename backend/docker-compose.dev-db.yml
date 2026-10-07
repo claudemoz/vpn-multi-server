@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: wg_vpn_postgres
+    environment:
+      POSTGRES_DB: wg-vpn-platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - wg_vpn_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  wg_vpn_postgres_data:

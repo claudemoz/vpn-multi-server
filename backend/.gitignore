@@ -15,3 +15,7 @@ build-errors.log
 # IDE
 .vscode/
 .idea/
+
+# 
+docker-compose.prod-api.yml
+docker-compose.prod-agent.yml

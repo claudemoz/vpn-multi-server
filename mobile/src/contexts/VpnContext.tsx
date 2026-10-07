@@ -159,6 +159,8 @@ export function VpnProvider({ children }: { children: ReactNode }) {
         name: deviceLabel(),
       });
 
+      console.log("### device ### ", device);
+      
       const configWithKey = device.private_key
         ? injectKey(device.config, device.private_key)
         : device.config;

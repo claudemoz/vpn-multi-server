@@ -1,0 +1,37 @@
+services:
+  # migrate:
+  #   image: xxxx
+  #   environment:
+  #     DB_USER: "xxxxx"
+  #     DB_PASSWORD: "xxxxx"
+  #     DB_NAME: "xxxxx"
+  #     DATABASE_URL: xxxx
+  #   entrypoint: ["/bin/sh", "-c"]
+  #   command:
+  #     - "migrate -path /migrations -database $$DATABASE_URL up"
+  #   restart: "no"
+
+  api:
+    image: #####################
+    container_name: vpn-api
+    environment:
+      APP_ENV: production
+      APP_PORT: "8080"
+      AGENT_TOKEN: "#####################"
+      JWT_SECRET: "0b4f8849-1cc5-434a-ad86-50c21488bea6"
+      JWT_EXPIRATION_HOURS: 2160
+      # 
+      DB_HOST: "#####################"
+      DB_PORT: "#####################"
+      DB_USER: "#####################"
+      DB_PASSWORD: "#####################"
+      DB_NAME: "#####################"
+      DB_SSLMODE: "require"
+      # DB_TIMEZONE: ${DB_TIMEZONE:-UTC}
+      #
+    ports:
+      - "8080:8080"
+    # depends_on:
+    #   migrate:
+    #     condition: service_completed_successfully
+    restart: always

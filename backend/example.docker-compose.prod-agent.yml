@@ -1,0 +1,16 @@
+services:
+  agent:
+    image: #####################
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    restart: always
+    environment:
+      AGENT_LISTEN: 0.0.0.0:50051
+      WG_INTERFACE: wg0
+      AGENT_BACKEND: wgctrl
+      AGENT_TOKEN: "#####################"
+      AGENT_TLS_CERT: /etc/letsencrypt/live/#####################/fullchain.pem
+      AGENT_TLS_KEY: /etc/letsencrypt/live/#####################/privkey.pem
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro

@@ -1,0 +1,96 @@
+diff --git a/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m b/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m
+index 426514b..5e18144 100644
+--- a/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m
++++ b/node_modules/react-native-wireguard-vpn/ios/WireGuardVpn.m
+@@ -1,8 +1,13 @@
+ #import "WireGuardVpn.h"
+ #import <NetworkExtension/NetworkExtension.h>
+ 
++// Bundle identifier of the Packet Tunnel extension target embedded in the app.
++// Must match the target's PRODUCT_BUNDLE_IDENTIFIER in Xcode.
++static NSString *const kTunnelProviderBundleIdentifier = @"com.wgvpn.platform.WireGuardTunnel";
++
+ @implementation WireGuardVpn {
+   id _neStatusObserver;
++  BOOL _listening;
+ }
+ 
+ RCT_EXPORT_MODULE(WireGuardVpnModule)
+@@ -15,6 +20,7 @@ @implementation WireGuardVpn {
+ // RN will call these when JS starts/stops listening to events.
+ - (void)startObserving
+ {
++  _listening = YES;
+   if (_neStatusObserver != nil) return;
+ 
+   __weak typeof(self) weakSelf = self;
+@@ -29,6 +35,7 @@ - (void)startObserving
+ 
+ - (void)stopObserving
+ {
++  _listening = NO;
+   if (_neStatusObserver == nil) return;
+   [[NSNotificationCenter defaultCenter] removeObserver:_neStatusObserver];
+   _neStatusObserver = nil;
+@@ -36,9 +43,9 @@ - (void)stopObserving
+ 
+ - (void)emitVpnStateChanged
+ {
+-  if (![self hasListeners]) return;
++  if (!_listening) return;
+ 
+-  NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++  NSString *providerBundleIdentifier = kTunnelProviderBundleIdentifier;
+   [NETunnelProviderManager loadAllFromPreferencesWithCompletionHandler:^(NSArray<NETunnelProviderManager *> * _Nullable managers, NSError * _Nullable error) {
+     if (error || managers == nil) return;
+ 
+@@ -84,17 +91,11 @@ - (void)emitVpnStateChanged
+       return;
+     }
+     
+-    NETunnelProviderManager *manager = managers.firstObject ?: [[NETunnelProviderManager alloc] init];
+-    manager.localizedDescription = @"WireGuard VPN";
+-    manager.protocolConfiguration = [[NETunnelProviderProtocol alloc] init];
+-    
+-    [manager saveToPreferencesWithCompletionHandler:^(NSError * _Nullable error) {
+-      if (error) {
+-        reject(@"INIT_ERROR", error.localizedDescription, error);
+-        return;
+-      }
+-      resolve(nil);
+-    }];
++    // Do not save an empty NETunnelProviderProtocol here: iOS rejects it with
++    // NEVPNErrorDomain Code=1 "Missing server address". connect: creates and saves
++    // the manager with a fully populated protocol.
++    (void)managers;
++    resolve(nil);
+   }];
+ }
+ 
+@@ -129,7 +130,7 @@ - (void)emitVpnStateChanged
+       return;
+     }
+     
+-    NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++    NSString *providerBundleIdentifier = kTunnelProviderBundleIdentifier;
+ 
+     // Pick the correct NETunnelProviderManager (do not assume firstObject).
+     NETunnelProviderManager *manager = nil;
+@@ -199,7 +200,7 @@ - (void)emitVpnStateChanged
+       return;
+     }
+     
+-    NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++    NSString *providerBundleIdentifier = kTunnelProviderBundleIdentifier;
+     NETunnelProviderManager *manager = nil;
+     for (NETunnelProviderManager *m in managers) {
+       if (![m.protocolConfiguration isKindOfClass:[NETunnelProviderProtocol class]]) continue;
+@@ -229,7 +230,7 @@ - (void)emitVpnStateChanged
+       return;
+     }
+     
+-    NSString *providerBundleIdentifier = @"com.wireguardvpn.tunnel";
++    NSString *providerBundleIdentifier = kTunnelProviderBundleIdentifier;
+     NETunnelProviderManager *manager = nil;
+     for (NETunnelProviderManager *m in managers) {
+       if (![m.protocolConfiguration isKindOfClass:[NETunnelProviderProtocol class]]) continue;

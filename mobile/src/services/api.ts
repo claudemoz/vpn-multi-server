@@ -96,13 +96,7 @@ export const deviceApi = {
     return request<Device[]>('/device/list', {}, token);
   },
 
-  create(
-    token: string,
-    data: { server_id: string; name: string },
-  ) {
-    return request<CreateDeviceResponse>('/device', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }, token);
+  create(token: string, data: { server_id: string; name: string }) {
+    return request<CreateDeviceResponse>('/device', { method: 'POST', body: JSON.stringify(data)}, token);
   },
 };

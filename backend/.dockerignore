@@ -1,0 +1,10 @@
+.air.toml
+.git
+.env
+
+Makefile
+README.md
+
+# 
+docker-compose.prod-api.yml
+docker-compose.prod-agent.yml

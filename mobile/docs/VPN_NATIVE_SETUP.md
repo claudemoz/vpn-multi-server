@@ -2,6 +2,10 @@
 
 L'app utilise [`react-native-wireguard-vpn`](https://github.com/usama7365/react-native-wireguard-vpn) pour activer le tunnel via :
 
+> **Patch iOS (RN 0.81 / Expo 54)** : React Native a retiré `hasListeners` de `RCTEventEmitter`.
+> Le fichier `patches/react-native-wireguard-vpn+1.0.22.patch` est appliqué au `npm install` via `patch-package`.
+
+
 - **iOS** : Network Extension (Packet Tunnel Provider)
 - **Android** : `VpnService` + consentement système
 
@@ -14,7 +18,7 @@ L'app utilise [`react-native-wireguard-vpn`](https://github.com/usama7365/react-
 ```bash
 cd mobile
 npm install
-npx expo prebuild --clean
+npx expo prebuild --clean   # SDK 54 — compatible Xcode 16.3 (Swift 6.1)
 ```
 
 ---
@@ -50,9 +54,23 @@ npx expo run:ios --device
 
 1. Ouvrir `ios/WGVPN.xcworkspace` dans Xcode
 2. **File → New → Target → Network Extension → Packet Tunnel Provider**
-3. Nom : `WireGuardTunnel`
-4. **Bundle Identifier** : `com.wireguardvpn.tunnel`  
-   (obligatoire — c'est l'ID attendu par la librairie native)
+3. Product Name : `WireGuardTunnel`
+4. **Bundle Identifier** : `com.wgvpn.platform.WireGuardTunnel`  
+   (généré automatiquement par Xcode = Organization Identifier + Product Name ;
+   la librairie est patchée pour utiliser cet ID — voir `patches/react-native-wireguard-vpn+1.0.22.patch`,
+   constante `kTunnelProviderBundleIdentifier` dans `ios/WireGuardVpn.m`)
+
+> L'ID par défaut de la librairie, `com.wireguardvpn.tunnel`, est déjà enregistré par une autre équipe
+> Apple et ne peut pas être utilisé (« cannot be registered to your development team »).
+
+**Important** : la librairie ne fournit que le pont React Native, pas le code de l'extension.
+La target créée est un template vide : il faut y implémenter `PacketTunnelProvider` avec
+[WireGuardKit](https://git.zx2c4.com/wireguard-apple) (Swift Package, produit `WireGuardKit`)
+en lisant `protocolConfiguration.serverAddress` et `providerConfiguration`
+(`privateKey`, `publicKey`, `serverPort`, `allowedIPs`, `dns`, `mtu`).
+
+`npx expo prebuild --clean` régénère `ios/` et **supprime cette target** : ne pas relancer
+`prebuild --clean` une fois la target créée (ou la recréer ensuite).
 
 ### C. Capabilities
 
@@ -65,7 +83,7 @@ Répéter sur la cible **WireGuardTunnel** si nécessaire.
 
 ### D. App IDs (Developer Portal)
 
-Pour `com.wgvpn.platform` et `com.wireguardvpn.tunnel` :
+Pour `com.wgvpn.platform` et `com.wgvpn.platform.WireGuardTunnel` :
 
 - Activer **Network Extensions** → **Packet Tunnel**
 - Regénérer les provisioning profiles
