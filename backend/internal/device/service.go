@@ -179,8 +179,21 @@ func (s *Service) Update(ctx context.Context, id uuid.UUID, req UpdateDeviceRequ
 	return ToResponse(*device), nil
 }
 
-func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
-	device, err := s.repo.FindByID(id)
+// Delete removes the device and its peer, which frees its IP on the server,
+// and closes its open session.
+func (s *Service) DeleteAllForUser(ctx context.Context, userID uuid.UUID) error {
+	devices, err := s.repo.FindByUserID(userID)
+	if err != nil {
+		return err
+	}
+	for _, device := range devices {
+		s.publishRemove(ctx, device.ServerID, device.PublicKey)
+	}
+	return s.repo.DeleteAllForUser(userID)
+}
+
+func (s *Service) Delete(ctx context.Context, userID, id uuid.UUID) error {
+	device, err := s.findOwned(userID, id)
 	if err != nil {
 		return err
 	}
@@ -191,6 +204,45 @@ func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
 
 	s.publishRemove(ctx, device.ServerID, device.PublicKey)
 	return nil
+}
+
+// StartSession records that the device's tunnel is up. Calling it again while
+// the session is open returns that session unchanged.
+func (s *Service) StartSession(userID, id uuid.UUID) (SessionResponse, error) {
+	device, err := s.findOwned(userID, id)
+	if err != nil {
+		return SessionResponse{}, err
+	}
+
+	session, err := s.repo.StartSession(device)
+	if err != nil {
+		return SessionResponse{}, err
+	}
+	return ToSessionResponse(*session), nil
+}
+
+// CurrentSession returns the open session of the device.
+func (s *Service) CurrentSession(userID, id uuid.UUID) (SessionResponse, error) {
+	if _, err := s.findOwned(userID, id); err != nil {
+		return SessionResponse{}, err
+	}
+
+	session, err := s.repo.FindOpenSession(id)
+	if err != nil {
+		return SessionResponse{}, err
+	}
+	return ToSessionResponse(*session), nil
+}
+
+func (s *Service) findOwned(userID, id uuid.UUID) (*Device, error) {
+	device, err := s.repo.FindByID(id)
+	if err != nil {
+		return nil, err
+	}
+	if device.UserID != userID {
+		return nil, apperrors.NewForbidden("device belongs to another user")
+	}
+	return device, nil
 }
 
 type resolvedServer struct {

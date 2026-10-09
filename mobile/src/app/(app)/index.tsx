@@ -1,96 +1,115 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 import { ConnectButton } from '@/components/vpn/ConnectButton';
+import { LocationLine } from '@/components/vpn/LocationLine';
 import { ServerPicker } from '@/components/vpn/ServerPicker';
-import { useAuth } from '@/contexts/AuthContext';
 import { useVpn } from '@/contexts/VpnContext';
-import { Colors, Spacing } from '@/constants/theme';
+import { Palette, Spacing } from '@/constants/theme';
 
-const STATUS_TEXT = {
-  disconnected: 'Non connecté',
-  connecting: 'Connexion en cours…',
-  connected: 'Connecté',
-} as const;
+function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  return [h, m, s].map((n) => String(n).padStart(2, '0')).join(':');
+}
+
+function useElapsed(since: number | null): string | null {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (since === null) return;
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [since]);
+
+  return since === null ? null : formatDuration(now - since);
+}
 
 export default function HomeScreen() {
-  const { user, logout } = useAuth();
   const {
     servers,
     selectedServer,
     status,
-    assignedIp,
+    connectedAt,
     isLoadingServers,
     tunnelAvailable,
     error,
+    autoSelect,
     selectServer,
+    selectAuto,
+    refreshServers,
     connect,
     disconnect,
   } = useVpn();
 
   const isConnected = status === 'connected';
+  const isIdle = status === 'disconnected';
+  const duration = useElapsed(isConnected ? connectedAt : null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  function handleToggle() {
-    if (isConnected) {
-      disconnect();
-    } else {
-      connect();
+  async function handleRefresh() {
+    setRefreshing(true);
+    try {
+      await refreshServers();
+    } finally {
+      setRefreshing(false);
     }
   }
 
+  function handleToggle() {
+    if (status === 'disconnecting') return;
+    // Pressing while connecting cancels the attempt.
+    const action = isIdle ? connect : disconnect;
+    action().catch(() => {});
+  }
+
   return (
-    <SafeAreaView style={styles.safe}>
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.greeting}>Bonjour,</Text>
-          <Text style={styles.name}>
-            {user?.first_name} {user?.last_name}
-          </Text>
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <StatusBar style="light" />
+      <ScrollView
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={Palette.muted} />
+        }>
+        <View style={styles.hero}>
+          <ConnectButton status={status} onPress={handleToggle} disabled={isIdle && !selectedServer} />
+
+          <LocationLine
+            status={status}
+            detail={
+              isConnected
+                ? [duration ?? '00:00:00', selectedServer?.name].filter(Boolean).join('  ·  ')
+                : null
+            }
+          />
         </View>
-        <Pressable onPress={logout} style={styles.logout}>
-          <Text style={styles.logoutText}>Déconnexion</Text>
-        </Pressable>
-      </View>
 
-      <View style={styles.statusCard}>
-        <View style={[styles.statusDot, isConnected && styles.statusDotOn]} />
-        <Text style={styles.statusLabel}>{STATUS_TEXT[status]}</Text>
-        {assignedIp ? (
-          <Text style={styles.ip}>IP : {assignedIp}</Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {!tunnelAvailable ? (
+          <Text style={styles.warn}>VPN natif indisponible dans Expo Go : lancez un build natif.</Text>
         ) : null}
-        {selectedServer && isConnected ? (
-          <Text style={styles.serverInfo}>
-            {selectedServer.name} ({selectedServer.region.toUpperCase()})
-          </Text>
-        ) : null}
-      </View>
 
-      <View style={styles.connectSection}>
-        <ConnectButton
-          status={status}
-          onPress={handleToggle}
-          disabled={!selectedServer && !isConnected}
-        />
-      </View>
-
-      <View style={styles.serversSection}>
-        <Text style={styles.sectionTitle}>Serveur VPN</Text>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Serveurs</Text>
+          {!isIdle ? <Text style={styles.lockText}>Verrouillé</Text> : null}
+        </View>
         <ServerPicker
           servers={servers}
           selected={selectedServer}
+          auto={autoSelect}
           onSelect={selectServer}
-          disabled={isConnected || status === 'connecting'}
-          loading={isLoadingServers}
+          onSelectAuto={selectAuto}
+          disabled={!isIdle}
+          loading={isLoadingServers && servers.length === 0}
         />
-      </View>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-
-      <Text style={styles.hint}>
-        {tunnelAvailable
-          ? 'Tunnel WireGuard natif actif (Network Extension iOS / VpnService Android).'
-          : 'Expo Go ne supporte pas le VPN natif. Build requis : npm run ios ou npm run android.'}
-      </Text>
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -98,90 +117,61 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: Colors.dark.background,
+    backgroundColor: Palette.surface,
+  },
+  content: {
     paddingHorizontal: Spacing.four,
+    paddingBottom: Spacing.four,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    paddingTop: Spacing.two,
-    marginBottom: Spacing.four,
-  },
-  greeting: {
-    fontSize: 14,
-    color: Colors.dark.textSecondary,
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.dark.text,
-    marginTop: 2,
-  },
-  logout: {
-    padding: Spacing.two,
-  },
-  logoutText: {
-    color: Colors.dark.textSecondary,
-    fontSize: 14,
-  },
-  statusCard: {
-    backgroundColor: Colors.dark.backgroundElement,
-    borderRadius: 16,
-    padding: Spacing.three,
+  hero: {
     alignItems: 'center',
-    gap: Spacing.one,
-    marginBottom: Spacing.four,
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: Colors.dark.textSecondary,
-  },
-  statusDotOn: {
-    backgroundColor: '#30A46C',
-  },
-  statusLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.dark.text,
-  },
-  ip: {
-    fontSize: 14,
-    color: '#30A46C',
-    fontFamily: 'monospace',
-  },
-  serverInfo: {
-    fontSize: 13,
-    color: Colors.dark.textSecondary,
-  },
-  connectSection: {
-    alignItems: 'center',
-    paddingVertical: Spacing.five,
-  },
-  serversSection: {
-    gap: Spacing.two,
-    marginBottom: Spacing.three,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.dark.text,
-    paddingHorizontal: Spacing.one,
+    paddingTop: Spacing.five,
+    paddingBottom: Spacing.two,
   },
   error: {
-    color: '#E5484D',
-    textAlign: 'center',
+    marginTop: Spacing.three,
+    padding: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: Palette.red + '1A',
+    color: '#FCA5A5',
     fontSize: 14,
+    textAlign: 'center',
+  },
+  warn: {
+    marginTop: Spacing.three,
+    padding: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: Palette.amber + '1A',
+    color: '#FCD34D',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: Spacing.four,
     marginBottom: Spacing.two,
   },
-  hint: {
+  sectionTitle: {
     fontSize: 12,
-    color: Colors.dark.textSecondary,
+    fontWeight: '700',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    color: Palette.muted,
+    paddingHorizontal: Spacing.one,
+  },
+  lockText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: Palette.muted,
+  },
+  pullHint: {
+    marginTop: Spacing.two,
+    fontSize: 11,
+    color: Palette.slate,
     textAlign: 'center',
-    lineHeight: 18,
-    marginTop: 'auto',
-    paddingBottom: Spacing.three,
   },
 });

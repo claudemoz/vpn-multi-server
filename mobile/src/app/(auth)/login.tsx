@@ -1,159 +1,145 @@
 import { Link, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useForm } from 'react-hook-form';
+import { StyleSheet, Text, View } from 'react-native';
 
+import { AuthScreen } from '@/components/ui/AuthScreen';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
+import { FormInput } from '@/components/ui/FormInput';
+import { Palette, Spacing } from '@/constants/theme';
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiClientError } from '@/services/api';
-import { Colors, Spacing } from '@/constants/theme';
+import { emailRules, loginPasswordRules } from '@/services/auth-rules';
+
+type LoginValues = {
+  email: string;
+  password: string;
+};
 
 export default function LoginScreen() {
   const { registered } = useLocalSearchParams<{ registered?: string }>();
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { control, handleSubmit, formState, setFocus } = useForm<LoginValues>({
+    defaultValues: { email: '', password: '' },
+    mode: 'onSubmit',
+    reValidateMode: 'onChange',
+  });
 
-  async function handleLogin() {
+  const onSubmit = handleSubmit(async ({ email, password }) => {
     setError(null);
-    if (!email.trim() || !password) {
-      setError('Email et mot de passe requis');
-      return;
-    }
-
-    setLoading(true);
     try {
       await login(email, password);
     } catch (e) {
-      const msg =
+      setError(
         e instanceof ApiClientError
           ? e.message
-          : 'Connexion impossible. Vérifiez l’URL de l’API.';
-      setError(msg);
-    } finally {
-      setLoading(false);
+          : 'Connexion impossible. Vérifiez l’URL de l’API.',
+      );
     }
-  }
+  });
 
   return (
-    <SafeAreaView style={styles.safe}>
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled">
-          <View style={styles.header}>
-            <Text style={styles.logo}>WG VPN</Text>
-            <Text style={styles.subtitle}>Connectez-vous à votre compte</Text>
-          </View>
+    <AuthScreen>
+      <View style={styles.block}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Connexion</Text>
+          <Text style={styles.subtitle}>Entrez vos identifiants pour continuer.</Text>
+        </View>
 
-          {registered === '1' ? (
-            <Text style={styles.success}>
-              Compte créé. Connectez-vous pour continuer.
-            </Text>
-          ) : null}
+        {registered === '1' ? (
+          <Text style={styles.success}>Compte créé. Vous pouvez vous connecter.</Text>
+        ) : null}
 
-          <View style={styles.form}>
-            <Input
-              label="Email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoComplete="email"
-              placeholder="vous@exemple.com"
-            />
-            <Input
-              label="Mot de passe"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-              autoComplete="password"
-              placeholder="••••••••"
-            />
+        <FormInput
+          control={control}
+          name="email"
+          rules={emailRules}
+          label="Email"
+          keyboardType="email-address"
+          autoComplete="email"
+          textContentType="emailAddress"
+          placeholder="Saisissez votre adresse email"
+          returnKeyType="next"
+          onSubmitEditing={() => setFocus('password')}
+          submitBehavior="submit"
+        />
+        <FormInput
+          control={control}
+          name="password"
+          rules={loginPasswordRules}
+          label="Mot de passe"
+          secureTextEntry
+          autoComplete="password"
+          textContentType="password"
+          placeholder="Saisissez votre mot de passe"
+          returnKeyType="go"
+          onSubmitEditing={onSubmit}
+        />
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={styles.error}>{error}</Text> : null}
 
-            <Button title="Se connecter" onPress={handleLogin} loading={loading} />
-          </View>
+        <Button
+          title="Se connecter"
+          onPress={onSubmit}
+          loading={formState.isSubmitting}
+          style={styles.cta}
+        />
 
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>Pas encore de compte ?</Text>
-            <Link href="/(auth)/register" asChild>
-              <Text style={styles.link}>Créer un compte</Text>
-            </Link>
-          </View>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Pas de compte ?</Text>
+          <Link href="/(auth)/register" asChild>
+            <Text style={styles.link}>Créer un compte</Text>
+          </Link>
+        </View>
+      </View>
+    </AuthScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: Colors.dark.background,
-  },
-  flex: {
-    flex: 1,
-  },
-  content: {
-    flexGrow: 1,
-    padding: Spacing.four,
-    justifyContent: 'center',
-    gap: Spacing.five,
-  },
-  header: {
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  logo: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: Colors.dark.text,
-    letterSpacing: -1,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: Colors.dark.textSecondary,
-  },
-  form: {
+  block: {
     gap: Spacing.three,
   },
+  header: {
+    marginBottom: Spacing.two,
+    gap: 6,
+  },
+  title: {
+    fontSize: 26,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  subtitle: {
+    fontSize: 15,
+    color: Palette.muted,
+  },
+  cta: {
+    marginTop: Spacing.one,
+    borderRadius: 12,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   success: {
-    color: '#30A46C',
+    color: Palette.green,
     fontSize: 14,
-    textAlign: 'center',
-    backgroundColor: '#30A46C18',
-    padding: Spacing.two,
-    borderRadius: 10,
   },
   error: {
-    color: '#E5484D',
+    color: '#FCA5A5',
     fontSize: 14,
-    textAlign: 'center',
   },
   footer: {
+    marginTop: Spacing.two,
     flexDirection: 'row',
     justifyContent: 'center',
     gap: Spacing.one,
   },
   footerText: {
-    color: Colors.dark.textSecondary,
+    color: Palette.muted,
     fontSize: 15,
   },
   link: {
-    color: '#208AEF',
+    color: Palette.blue,
     fontSize: 15,
     fontWeight: '600',
   },

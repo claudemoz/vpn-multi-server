@@ -1,18 +1,26 @@
 package user
 
 import (
+	"context"
+
 	apperrors "backend/pkg/errors"
 
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
-type Service struct {
-	repo *Repository
+// AccountCleanup removes devices and VPN sessions that still point at a user.
+type AccountCleanup interface {
+	DeleteAllForUser(ctx context.Context, userID uuid.UUID) error
 }
 
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+type Service struct {
+	repo    *Repository
+	cleanup AccountCleanup
+}
+
+func NewService(repo *Repository, cleanup AccountCleanup) *Service {
+	return &Service{repo: repo, cleanup: cleanup}
 }
 
 func (s *Service) GetAll() ([]UserResponse, error) {
@@ -53,13 +61,6 @@ func (s *Service) Update(id uuid.UUID, req UpdateUserRequest) (UserResponse, err
 	if req.Phone != nil {
 		user.Phone = *req.Phone
 	}
-	if req.Password != nil {
-		hashed, err := hashPassword(*req.Password)
-		if err != nil {
-			return UserResponse{}, err
-		}
-		user.Password = hashed
-	}
 
 	if err := s.repo.Update(user); err != nil {
 		return UserResponse{}, err
@@ -67,8 +68,40 @@ func (s *Service) Update(id uuid.UUID, req UpdateUserRequest) (UserResponse, err
 	return ToResponse(*user), nil
 }
 
-func (s *Service) Delete(id uuid.UUID) error {
+func (s *Service) ChangePassword(id uuid.UUID, req ChangePasswordRequest) error {
+	user, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+	if CheckPassword(user.Password, req.CurrentPassword) != nil {
+		return apperrors.NewUnauthorized("mot de passe actuel incorrect")
+	}
+	hashed, err := hashPassword(req.Password)
+	if err != nil {
+		return err
+	}
+	user.Password = hashed
+	return s.repo.Update(user)
+}
+
+func (s *Service) Delete(ctx context.Context, id uuid.UUID) error {
+	if s.cleanup != nil {
+		if err := s.cleanup.DeleteAllForUser(ctx, id); err != nil {
+			return err
+		}
+	}
 	return s.repo.Delete(id)
+}
+
+func (s *Service) DeleteWithPassword(ctx context.Context, id uuid.UUID, password string) error {
+	user, err := s.repo.FindByID(id)
+	if err != nil {
+		return err
+	}
+	if CheckPassword(user.Password, password) != nil {
+		return apperrors.NewUnauthorized("mot de passe incorrect")
+	}
+	return s.Delete(ctx, id)
 }
 
 func (s *Service) Create(req CreateUserRequest) (UserResponse, error) {

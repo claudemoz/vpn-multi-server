@@ -104,7 +104,47 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+		apperrors.Handle(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) ChangePassword(c *gin.Context) {
+	userID, ok := c.Get("userID")
+	if !ok {
+		apperrors.Handle(c, apperrors.NewUnauthorized("unauthenticated"))
+		return
+	}
+
+	var req ChangePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.Handle(c, apperrors.NewInvalidInput(err.Error()))
+		return
+	}
+
+	if err := h.service.ChangePassword(userID.(uuid.UUID), req); err != nil {
+		apperrors.Handle(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) DeleteMe(c *gin.Context) {
+	userID, ok := c.Get("userID")
+	if !ok {
+		apperrors.Handle(c, apperrors.NewUnauthorized("unauthenticated"))
+		return
+	}
+
+	var req DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		apperrors.Handle(c, apperrors.NewInvalidInput(err.Error()))
+		return
+	}
+
+	if err := h.service.DeleteWithPassword(c.Request.Context(), userID.(uuid.UUID), req.Password); err != nil {
 		apperrors.Handle(c, err)
 		return
 	}

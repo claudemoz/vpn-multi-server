@@ -11,10 +11,15 @@
       "bundleIdentifier": "com.wgvpn.platform",
       "infoPlist": {
         "NSLocalNetworkUsageDescription": "Cette application utilise le réseau pour établir une connexion VPN WireGuard.",
-        "UIBackgroundModes": ["network-authentication", "network"]
+        "UIBackgroundModes": [
+          "network-authentication",
+          "network"
+        ]
       },
       "entitlements": {
-        "com.apple.developer.networking.networkextension": ["packet-tunnel-provider"]
+        "com.apple.developer.networking.networkextension": [
+          "packet-tunnel-provider"
+        ]
       }
     },
     "android": {
@@ -47,7 +52,8 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true

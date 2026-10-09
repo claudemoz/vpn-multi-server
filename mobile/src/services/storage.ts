@@ -8,6 +8,8 @@ const KEYS = {
   deviceConfig: 'vpn_device_config',
   privateKey: 'vpn_private_key',
   serverId: 'vpn_server_id',
+  realLocation: 'vpn_real_location_v2',
+  autoSelect: 'vpn_auto_select',
 } as const;
 
 /**
@@ -101,7 +103,33 @@ export async function clearVpnSession(): Promise<void> {
   ]);
 }
 
+export async function getRealLocation<T>(): Promise<T | null> {
+  const raw = await getItem(KEYS.realLocation);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function setRealLocation(location: unknown): Promise<void> {
+  await setItem(KEYS.realLocation, JSON.stringify(location));
+}
+
+/** Automatic server selection is on unless the user picked a server. */
+export async function getAutoSelect(): Promise<boolean> {
+  return (await getItem(KEYS.autoSelect)) !== '0';
+}
+
+export async function setAutoSelect(enabled: boolean): Promise<void> {
+  await setItem(KEYS.autoSelect, enabled ? '1' : '0');
+}
+
 export async function clearAll(): Promise<void> {
+  await deleteItem(KEYS.autoSelect);
   await clearAuth();
   await clearVpnSession();
+  await deleteItem(KEYS.realLocation);
+  await deleteItem('vpn_real_location').catch(() => {});
 }

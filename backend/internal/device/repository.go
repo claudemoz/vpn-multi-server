@@ -36,6 +36,14 @@ func (r *Repository) FindAll() ([]Device, error) {
 	return devices, nil
 }
 
+func (r *Repository) FindByUserID(userID uuid.UUID) ([]Device, error) {
+	var devices []Device
+	if err := r.db.Where("user_id = ?", userID).Find(&devices).Error; err != nil {
+		return nil, err
+	}
+	return devices, nil
+}
+
 func (r *Repository) FindByID(id uuid.UUID) (*Device, error) {
 	var device Device
 	if err := r.db.First(&device, "id = ?", id).Error; err != nil {
@@ -104,15 +112,76 @@ func (r *Repository) Update(device *Device) error {
 	return nil
 }
 
+// Delete removes the row for good (not a soft delete) so its assigned_ip and
+// public_key, both under a unique constraint, can be reused right away. The
+// device's open session, if any, is closed in the same transaction.
 func (r *Repository) Delete(id uuid.UUID) error {
-	result := r.db.Delete(&Device{}, id)
-	if result.Error != nil {
-		return result.Error
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		err := tx.Model(&Session{}).
+			Where("device_id = ? AND disconnected_at IS NULL", id).
+			Update("disconnected_at", time.Now()).Error
+		if err != nil {
+			return err
+		}
+
+		result := tx.Unscoped().Delete(&Device{}, "id = ?", id)
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected == 0 {
+			return apperrors.NewNotFound("device not found")
+		}
+		return nil
+	})
+}
+
+func (r *Repository) DeleteAllForUser(userID uuid.UUID) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Unscoped().Where("user_id = ?", userID).Delete(&Device{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("user_id = ?", userID).Delete(&Session{}).Error
+	})
+}
+
+// FindOpenSession returns the session of a device that has not been closed.
+func (r *Repository) FindOpenSession(deviceID uuid.UUID) (*Session, error) {
+	var session Session
+	err := r.db.
+		Where("device_id = ? AND disconnected_at IS NULL", deviceID).
+		First(&session).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, apperrors.NewNotFound("no open session for this device")
+		}
+		return nil, err
 	}
-	if result.RowsAffected == 0 {
-		return apperrors.NewNotFound("device not found")
+	return &session, nil
+}
+
+// StartSession opens a session for the device, or returns the one already
+// open so that retries do not reset the connection time.
+func (r *Repository) StartSession(device *Device) (*Session, error) {
+	if open, err := r.FindOpenSession(device.ID); err == nil {
+		return open, nil
+	} else if !errors.Is(err, apperrors.ErrNotFound) {
+		return nil, err
 	}
-	return nil
+
+	session := &Session{
+		UserID:      device.UserID,
+		ServerID:    device.ServerID,
+		DeviceID:    device.ID,
+		AssignedIP:  device.AssignedIP,
+		ConnectedAt: time.Now(),
+	}
+	if err := r.db.Create(session).Error; err != nil {
+		if isUniqueViolation(err) {
+			return r.FindOpenSession(device.ID)
+		}
+		return nil, err
+	}
+	return session, nil
 }
 
 func isUniqueViolation(err error) bool {

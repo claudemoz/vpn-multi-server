@@ -50,6 +50,16 @@ export type CreateDeviceResponse = Device & {
   config: string;
 };
 
+export type VpnSession = {
+  id: string;
+  device_id: string;
+  server_id: string;
+  assigned_ip: string;
+  connected_at: string;
+  disconnected_at?: string;
+  duration_seconds: number;
+};
+
 export type ApiError = {
   error: string;
 };

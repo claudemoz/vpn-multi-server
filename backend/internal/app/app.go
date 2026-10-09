@@ -51,7 +51,6 @@ func New(cfg *config.Config) *App {
 	deviceRepo := device.NewRepository(db)
 
 	// Services
-	userService := user.NewService(userRepo)
 	serverService := vpnserver.NewService(serverRepo, cfg.WireGuard.Subnet)
 
 	// gRPC link to the agents: the orchestrator pushes peers to each server
@@ -70,6 +69,7 @@ func New(cfg *config.Config) *App {
 	)
 
 	deviceService := device.NewService(deviceRepo, serverService, wgSettings, orch)
+	userService := user.NewService(userRepo, deviceService)
 	authService := auth.NewService(userService, cfg.JWT)
 
 	// Handlers

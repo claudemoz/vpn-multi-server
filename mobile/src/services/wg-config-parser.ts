@@ -76,17 +76,25 @@ export function wgQuickToNativeConfig(
   const dns = splitList(iface.DNS);
   const address = iface.Address;
 
-  return {
+  if (!address) {
+    throw new Error('Config WireGuard invalide : Address manquante');
+  }
+
+  // Android reads optional keys with hasKey() then getInt()/getArray(): a key
+  // present with a null value crashes the native module, so omit it entirely.
+  const config: WireGuardConfig = {
     privateKey,
     publicKey,
     serverAddress,
     serverPort,
     address,
     allowedIPs,
-    dns: dns.length > 0 ? dns : undefined,
-    mtu: iface.MTU ? Number.parseInt(iface.MTU, 10) : undefined,
-    presharedKey: peer.PresharedKey,
   };
+  if (dns.length > 0) config.dns = dns;
+  const mtu = iface.MTU ? Number.parseInt(iface.MTU, 10) : Number.NaN;
+  if (Number.isFinite(mtu)) config.mtu = mtu;
+  if (peer.PresharedKey) config.presharedKey = peer.PresharedKey;
+  return config;
 }
 
 /** Injecte la clé privée dans une config wg-quick (remplace le placeholder). */

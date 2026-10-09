@@ -13,7 +13,15 @@ type UpdateUserRequest struct {
 	LastName  *string `json:"last_name"  binding:"omitempty,min=2,max=80"`
 	Email     *string `json:"email"      binding:"omitempty,email,max=160"`
 	Phone     *string `json:"phone"      binding:"omitempty,max=20"`
-	Password  *string `json:"password"   binding:"omitempty,min=8,max=72"`
+}
+
+type ChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password" binding:"required"`
+	Password        string `json:"password"         binding:"required,min=8,max=72"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required"`
 }
 
 type UserResponse struct {

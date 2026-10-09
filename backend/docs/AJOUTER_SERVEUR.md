@@ -86,39 +86,128 @@ Si le VPS est ARM : `GOARCH=arm64 make build-agent`.
 
 ## 5. Donner un certificat TLS à l'agent
 
-Sur la machine qui garde la clé de la CA :
+**Pourquoi.** Sans TLS, `AGENT_TOKEN` voyage en clair sur Internet. Avec TLS :
+
+- la connexion entre l'API et l'agent est chiffrée ;
+- l'API vérifie qu'elle parle bien à **cet** agent et pas à un imposteur, parce que son certificat est signé par notre CA (`AGENT_TLS_CA`).
+
+Il y a deux sortes de fichiers :
+
+| Fichier | Rôle | Où il vit |
+|---|---|---|
+| `ca.key` | clé de la CA, sert **uniquement à signer** | une machine de confiance (ton poste), **jamais** sur un serveur |
+| `ca.crt` | certificat public de la CA | la machine de l'API (`/etc/wg-api/ca.crt`) |
+| `vpn-xx.key` | clé privée de l'agent | le VPS concerné uniquement |
+| `vpn-xx.crt` | certificat de l'agent, signé par la CA | le VPS concerné uniquement |
+
+La CA se crée **une seule fois**, pour le premier serveur. Pour chaque nouveau serveur, on ne fait que l'étape 5.2 avec la même CA : rien à changer sur l'API ni sur les autres serveurs.
+
+### 5.1 Créer la CA (une seule fois)
+
+Sur ta machine de confiance, dans un dossier dédié :
 
 ```bash
-NAME=vpn-fr
-IP=203.0.113.10
-DNS=vpn-fr.example.com
+mkdir -p ~/wg-ca && cd ~/wg-ca
+openssl req -x509 -newkey ed25519 -nodes -days 3650 \
+  -keyout ca.key -out ca.crt -subj "/CN=wg-agents-ca"
+chmod 600 ca.key
 
+scp ca.crt root@<MACHINE_API>:/etc/wg-api/ca.crt
+```
+
+**Pourquoi.** La CA est l'autorité que l'API croit. Tout certificat qu'elle signe est accepté par l'API. Elle dure 10 ans (`-days 3650`). Si `ca.key` est perdue, il faut recréer une CA et re-signer tous les agents. Si elle fuit, n'importe qui peut se faire passer pour un agent : garde-la hors des serveurs et sauvegarde-la.
+
+### 5.2 Créer le certificat d'un serveur (à chaque nouveau serveur)
+
+Dans le dossier de la CA, adapte les trois variables :
+
+```bash
+cd ~/wg-ca
+NAME=vpn-fr                  # nom du serveur, un certificat par VPS
+IP=203.0.113.10              # IP publique du VPS
+DNS=vpn-fr.example.com       # nom DNS du VPS
+
+# 1. Clé privée de l'agent + demande de signature (CSR)
 openssl req -newkey ed25519 -nodes -keyout $NAME.key -out $NAME.csr -subj "/CN=$NAME"
+
+# 2. Signature par la CA
 openssl x509 -req -in $NAME.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
   -out $NAME.crt -days 825 \
   -extfile <(printf "subjectAltName=DNS:%s,IP:%s\nextendedKeyUsage=serverAuth" "$DNS" "$IP")
-
-scp $NAME.crt $NAME.key root@$DNS:/etc/wg-agent/
 ```
 
-`ca.crt` est le certificat de la CA. On le met aussi sur la machine de l'API, par exemple dans `/etc/wg-api/ca.crt`. `ca.key` reste hors des serveurs : elle sert seulement à signer.
-
-La CA se crée une fois, sur une machine de confiance :
+Sans nom DNS, garde seulement l'IP :
 
 ```bash
-sudo mkdir -p /etc/wg-api
-sudo openssl req -x509 -newkey ed25519 -nodes -days 3650 \
-  -keyout ca.key -out ca.crt -subj "/CN=wg-agents-ca"
-sudo chmod 600 ca.key
+openssl x509 -req -in $NAME.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
+  -out $NAME.crt -days 825 \
+  -extfile <(printf "subjectAltName=IP:%s\nextendedKeyUsage=serverAuth" "$IP")
 ```
 
-**Pourquoi.** Sans TLS, `AGENT_TOKEN` voyage en clair sur Internet. Avec TLS :
+**Pourquoi.**
 
-- la connexion est chiffrée ;
-- l'API vérifie qu'elle parle bien à **cet** agent, parce que le certificat est signé par la CA (`AGENT_TLS_CA`) ;
-- le nom dans le certificat (le SAN, `vpn-fr.example.com` ou l'IP) doit être **exactement** celui mis dans `grpc_endpoint`, sans le `:50051`. Sinon l'API refuse le certificat.
+- La **CSR** contient la clé publique de l'agent et son nom. La CA la signe : c'est ce qui rend le certificat digne de confiance pour l'API.
+- Le **SAN** (`subjectAltName`) liste les noms sous lesquels l'agent peut être joint. L'API compare l'hôte de `grpc_endpoint` (sans le `:50051`) à cette liste. S'il n'y figure pas **exactement**, la connexion est refusée.
+- `extendedKeyUsage=serverAuth` limite le certificat à un usage serveur TLS.
+- `-CAcreateserial` crée `ca.srl`, qui donne un numéro unique à chaque certificat signé. Garde-le à côté de la CA.
+- 825 jours, c'est la durée maximale acceptée par les systèmes Apple et une bonne habitude ; il faudra renouveler (voir 5.5).
 
-Le chemin `/etc/wg-agent/vpn-fr.crt` est un choix de rangement. Un fichier par VPS, parce que chaque serveur a sa propre identité. Le chemin peut être autre, tant que `AGENT_TLS_CERT` et `AGENT_TLS_KEY` pointent vers les bons fichiers.
+### 5.3 Vérifier le certificat
+
+```bash
+openssl verify -CAfile ca.crt $NAME.crt                # doit afficher : vpn-fr.crt: OK
+openssl x509 -in $NAME.crt -noout -ext subjectAltName  # doit lister le DNS et/ou l'IP
+openssl x509 -in $NAME.crt -noout -enddate             # date d'expiration
+```
+
+**Pourquoi.** Une faute de frappe dans l'IP ou le DNS ne se voit qu'au moment où l'API refuse de se connecter. Vérifier ici évite de chercher l'erreur dans les logs.
+
+### 5.4 Envoyer le certificat sur le VPS
+
+```bash
+ssh root@$IP "mkdir -p /etc/wg-agent"
+scp $NAME.crt $NAME.key root@$IP:/etc/wg-agent/
+ssh root@$IP "chmod 600 /etc/wg-agent/$NAME.key"
+rm $NAME.csr
+```
+
+Puis, dans `/etc/wg-agent/env` sur le VPS (étape 6) :
+
+```ini
+AGENT_TLS_CERT=/etc/wg-agent/vpn-fr.crt
+AGENT_TLS_KEY=/etc/wg-agent/vpn-fr.key
+```
+
+**Pourquoi.** La clé `$NAME.key` est l'identité de l'agent : elle ne doit exister que sur son VPS (`chmod 600` : lisible par root seulement). La CSR ne sert plus après la signature. Le chemin `/etc/wg-agent/` est un choix de rangement ; il peut être autre tant que `AGENT_TLS_CERT` et `AGENT_TLS_KEY` pointent vers les bons fichiers.
+
+### 5.5 Tester depuis la machine de l'API
+
+Une fois l'agent démarré (étape 6) :
+
+```bash
+openssl s_client -connect vpn-fr.example.com:50051 -CAfile /etc/wg-api/ca.crt \
+  -verify_hostname vpn-fr.example.com </dev/null 2>/dev/null | grep "Verify return code"
+# Verify return code: 0 (ok)
+```
+
+**Pourquoi.** C'est exactement la vérification que fait l'API. Si ce test passe, la connexion TLS de l'API passera aussi. Si l'endpoint est une IP, remplace `-verify_hostname` par `-verify_ip 203.0.113.10`.
+
+### 5.6 Renouveler un certificat
+
+Avant la date d'expiration (`openssl x509 -noout -enddate`), refais 5.2 à 5.4 avec le même `NAME`, puis sur le VPS :
+
+```bash
+systemctl restart wg-agent
+```
+
+**Pourquoi.** Un certificat expiré est refusé par l'API : l'agent devient injoignable et les nouveaux appareils ne peuvent plus se connecter à ce serveur. Les tunnels déjà établis continuent de fonctionner, car ils ne passent pas par l'agent.
+
+### Erreurs fréquentes
+
+- **`x509: certificate is valid for X, not Y`** : l'hôte de `grpc_endpoint` n'est pas dans le SAN. Corrige `grpc_endpoint` ou re-signe avec le bon DNS/IP.
+- **`x509: certificate signed by unknown authority`** : l'API n'utilise pas la bonne `ca.crt` (`AGENT_TLS_CA`), ou le certificat a été signé par une autre CA.
+- **`Algorithm ed25519 not found` sur Mac** : l'`openssl` d'Apple est LibreSSL. Utilise celui de Homebrew (`brew install openssl@3`, puis `$(brew --prefix openssl@3)/bin/openssl`) ou fais la manipulation sur une machine Linux.
+- **`-extfile <(...)` ne marche pas** : cette syntaxe demande `bash` ou `zsh`, pas `sh`.
 
 ---
 

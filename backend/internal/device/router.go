@@ -11,4 +11,6 @@ func RegisterRoutes(rg *gin.RouterGroup, handler *Handler) {
 	devices.GET("/:id/config", handler.Config)
 	devices.PUT("/:id", handler.Update)
 	devices.DELETE("/:id", handler.Delete)
+	devices.POST("/:id/session", handler.StartSession)
+	devices.GET("/:id/session", handler.CurrentSession)
 }

@@ -7,6 +7,8 @@ func RegisterRoutes(rg *gin.RouterGroup, handler *Handler) {
 
 	users.GET("/me", handler.GetMe)
 	users.PUT("/me", handler.UpdateMe)
+	users.PUT("/me/password", handler.ChangePassword)
+	users.DELETE("/me", handler.DeleteMe)
 
 	users.GET("/list", handler.List)
 	users.GET("/:id", handler.Get)

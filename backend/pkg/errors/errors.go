@@ -29,6 +29,10 @@ func (e *AppError) Error() string {
 	return e.Err.Error()
 }
 
+func (e *AppError) Unwrap() error {
+	return e.Err
+}
+
 func NewNotFound(msg string) *AppError {
 	return &AppError{Err: ErrNotFound, Message: msg, StatusCode: http.StatusNotFound}
 }

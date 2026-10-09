@@ -9,8 +9,9 @@ import {
   type ReactNode,
 } from 'react';
 
-import { authApi, userApi } from '@/services/api';
+import { authApi, deviceApi, userApi } from '@/services/api';
 import * as storage from '@/services/storage';
+import { disconnectTunnel } from '@/services/vpn-tunnel';
 import type { User } from '@/types/api';
 
 type AuthContextValue = {
@@ -25,6 +26,9 @@ type AuthContextValue = {
     phone?: string;
     password: string;
   }) => Promise<void>;
+  updateProfile: (data: { first_name: string; last_name: string; email: string }) => Promise<void>;
+  changePassword: (data: { current_password: string; password: string }) => Promise<void>;
+  deleteAccount: (password: string) => Promise<void>;
   logout: () => Promise<void>;
 };
 
@@ -88,16 +92,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const logout = useCallback(async () => {
+  const updateProfile = useCallback(
+    async (data: { first_name: string; last_name: string; email: string }) => {
+      if (!token) throw new Error('unauthenticated');
+      const updated = await userApi.update(token, {
+        first_name: data.first_name.trim(),
+        last_name: data.last_name.trim(),
+        email: data.email.trim(),
+      });
+      await storage.setUser(updated);
+      setUser(updated);
+    },
+    [token],
+  );
+
+  const changePassword = useCallback(
+    async (data: { current_password: string; password: string }) => {
+      if (!token) throw new Error('unauthenticated');
+      await userApi.changePassword(token, data);
+    },
+    [token],
+  );
+
+  const deleteAccount = useCallback(async (password: string) => {
+    await disconnectTunnel().catch(() => {});
+    if (!token) throw new Error('unauthenticated');
+    await userApi.remove(token, password);
     await storage.clearAll();
     setToken(null);
     setUser(null);
     router.replace('/(auth)/login');
-  }, []);
+  }, [token]);
+
+  const logout = useCallback(async () => {
+    await disconnectTunnel().catch(() => {});
+    const { deviceId } = await storage.getVpnSession().catch(() => ({ deviceId: null }));
+    if (token && deviceId) {
+      await deviceApi.remove(token, deviceId, 5_000).catch(() => {});
+    }
+    await storage.clearAll();
+    setToken(null);
+    setUser(null);
+    router.replace('/(auth)/login');
+  }, [token]);
 
   const value = useMemo(
-    () => ({ user, token, isLoading, login, register, logout }),
-    [user, token, isLoading, login, register, logout],
+    () => ({ user, token, isLoading, login, register, updateProfile, changePassword, deleteAccount, logout }),
+    [user, token, isLoading, login, register, updateProfile, changePassword, deleteAccount, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

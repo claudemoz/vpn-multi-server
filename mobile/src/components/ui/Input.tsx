@@ -1,19 +1,22 @@
+import type { Ref } from 'react';
 import { StyleSheet, Text, TextInput, View, type TextInputProps } from 'react-native';
 
-import { Colors, Spacing } from '@/constants/theme';
+import { Palette, Spacing } from '@/constants/theme';
 
 type Props = TextInputProps & {
   label: string;
   error?: string;
+  ref?: Ref<TextInput>;
 };
 
-export function Input({ label, error, style, ...rest }: Props) {
+export function Input({ label, error, style, ref, ...rest }: Props) {
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
       <TextInput
+        ref={ref}
         style={[styles.input, error && styles.inputError, style]}
-        placeholderTextColor={Colors.dark.textSecondary}
+        placeholderTextColor={Palette.muted}
         autoCapitalize="none"
         {...rest}
       />
@@ -29,23 +32,23 @@ const styles = StyleSheet.create({
   label: {
     fontSize: 14,
     fontWeight: '500',
-    color: Colors.dark.textSecondary,
+    color: Palette.muted,
   },
   input: {
-    backgroundColor: Colors.dark.backgroundElement,
+    backgroundColor: Palette.cardRaised,
     borderRadius: 12,
     paddingHorizontal: Spacing.three,
     paddingVertical: Spacing.two + 4,
     fontSize: 16,
-    color: Colors.dark.text,
+    color: '#fff',
     borderWidth: 1,
-    borderColor: 'transparent',
+    borderColor: Palette.border,
   },
   inputError: {
-    borderColor: '#E5484D',
+    borderColor: Palette.red,
   },
   error: {
     fontSize: 13,
-    color: '#E5484D',
+    color: Palette.red,
   },
 });

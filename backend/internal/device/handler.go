@@ -101,17 +101,61 @@ func (h *Handler) Update(c *gin.Context) {
 }
 
 func (h *Handler) Delete(c *gin.Context) {
-	id, err := parseID(c.Param("id"))
-	if err != nil {
-		apperrors.Handle(c, err)
+	userID, id, ok := ownerAndID(c)
+	if !ok {
 		return
 	}
 
-	if err := h.service.Delete(c.Request.Context(), id); err != nil {
+	if err := h.service.Delete(c.Request.Context(), userID, id); err != nil {
 		apperrors.Handle(c, err)
 		return
 	}
 	c.Status(http.StatusNoContent)
+}
+
+func (h *Handler) StartSession(c *gin.Context) {
+	userID, id, ok := ownerAndID(c)
+	if !ok {
+		return
+	}
+
+	session, err := h.service.StartSession(userID, id)
+	if err != nil {
+		apperrors.Handle(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, session)
+}
+
+func (h *Handler) CurrentSession(c *gin.Context) {
+	userID, id, ok := ownerAndID(c)
+	if !ok {
+		return
+	}
+
+	session, err := h.service.CurrentSession(userID, id)
+	if err != nil {
+		apperrors.Handle(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, session)
+}
+
+// ownerAndID reads the authenticated user and the :id param, writing the
+// error response itself when either is missing or invalid.
+func ownerAndID(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
+	userID, ok := c.Get("userID")
+	if !ok {
+		apperrors.Handle(c, apperrors.NewUnauthorized("unauthenticated"))
+		return uuid.Nil, uuid.Nil, false
+	}
+
+	id, err := parseID(c.Param("id"))
+	if err != nil {
+		apperrors.Handle(c, err)
+		return uuid.Nil, uuid.Nil, false
+	}
+	return userID.(uuid.UUID), id, true
 }
 
 func parseID(raw string) (uuid.UUID, error) {
