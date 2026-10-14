@@ -1,4 +1,4 @@
-# CG VPN
+# VPN MULTISERVEUR
 
 Plateforme VPN basée sur [WireGuard](https://www.wireguard.com/) : un **control plane** qui gère les utilisateurs, les serveurs VPN et les appareils, un **agent** installé sur chaque serveur VPN, et une **application mobile** qui monte le tunnel.
 
