@@ -33,6 +33,7 @@ function useElapsed(since: number | null): string | null {
 export default function HomeScreen() {
   const {
     servers,
+    latencies,
     selectedServer,
     status,
     connectedAt,
@@ -101,6 +102,7 @@ export default function HomeScreen() {
         </View>
         <ServerPicker
           servers={servers}
+          latencies={latencies}
           selected={selectedServer}
           auto={autoSelect}
           onSelect={selectServer}

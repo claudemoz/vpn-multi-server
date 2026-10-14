@@ -28,7 +28,7 @@ func (noopPublisher) RemovePeer(context.Context, uuid.UUID, string) error      {
 // Failures are logged, not returned: the database is the source of truth and
 // the reconciler converges the agent on its next pass.
 func (s *Service) publishAdd(ctx context.Context, d *Device) bool {
-	peer := wireguard.NewDevicePeer(d.PublicKey, d.AssignedIP)
+	peer := s.wg.DevicePeer(d.PublicKey, d.AssignedIP)
 	if err := s.publisher.AddPeer(ctx, d.ServerID, peer); err != nil {
 		log.Printf("device %s: push peer to server %s failed: %v", d.ID, d.ServerID, err)
 		return false

@@ -3,11 +3,13 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 
 import { Palette, Spacing } from '@/constants/theme';
 import { countryName } from '@/services/geo';
-import { loadOf } from '@/services/server-select';
+import { loadOf, pickBestServer, type Latencies } from '@/services/server-select';
 import type { Server } from '@/types/api';
 
 type Props = {
   servers: Server[];
+  /** Measured round trip per server id (ms); empty until measured. */
+  latencies?: Latencies;
   /** Server that will be used; chosen by the app when `auto` is on. */
   selected: Server | null;
   auto: boolean;
@@ -29,7 +31,16 @@ function signal(load: number): { bars: number; color: string; label: string } {
   return { bars: 3, color: Palette.green, label: 'Rapide' };
 }
 
-export function ServerPicker({ servers, selected, auto, onSelect, onSelectAuto, disabled, loading }: Props) {
+export function ServerPicker({
+  servers,
+  latencies = {},
+  selected,
+  auto,
+  onSelect,
+  onSelectAuto,
+  disabled,
+  loading,
+}: Props) {
   if (loading) {
     return (
       <View style={[styles.card, styles.placeholder]}>
@@ -50,9 +61,7 @@ export function ServerPicker({ servers, selected, auto, onSelect, onSelectAuto, 
   const active = servers.filter((s) => s.is_active);
   const showAuto = active.length > 1;
   const autoOn = showAuto && auto;
-  const recommendedId = showAuto
-    ? active.reduce((best, s) => (loadOf(s) < loadOf(best) ? s : best)).id
-    : null;
+  const recommendedId = showAuto ? (pickBestServer(active, null, latencies)?.id ?? null) : null;
 
   return (
     <View style={styles.card}>
@@ -97,6 +106,7 @@ export function ServerPicker({ servers, selected, auto, onSelect, onSelectAuto, 
         const rowDisabled = disabled || unavailable;
         const load = loadOf(server);
         const sig = signal(load);
+        const latency = latencies[server.id];
 
         return (
           <Pressable
@@ -135,6 +145,7 @@ export function ServerPicker({ servers, selected, auto, onSelect, onSelectAuto, 
               <Text style={styles.country} numberOfLines={1}>
                 {countryName(server.region)}
                 {unavailable ? '  ·  Maintenance' : `  ·  ${Math.round(load * 100)} % de charge`}
+                {!unavailable && latency !== undefined ? `  ·  ${latency} ms` : ''}
               </Text>
             </View>
 

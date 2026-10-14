@@ -88,10 +88,12 @@ func normalizeHostIP(ip string) string {
 	return ip
 }
 
+// hostIPWithCIDR turns an address into a single-host CIDR: /32 for IPv4,
+// /128 for IPv6.
 func hostIPWithCIDR(ip string) string {
 	ip = normalizeHostIP(ip)
-	if strings.Contains(ip, "/") {
-		return ip
+	if strings.Contains(ip, ":") {
+		return ip + "/128"
 	}
 	return ip + "/32"
 }

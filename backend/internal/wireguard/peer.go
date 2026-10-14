@@ -11,11 +11,16 @@ type Peer struct {
 	Keepalive    int      // seconds, 0 to disable
 }
 
-// NewDevicePeer builds the server-side peer entry for a device.
-func NewDevicePeer(publicKey, assignedIP string) Peer {
+// NewDevicePeer builds the server-side peer entry for a device from its
+// tunnel addresses (IPv4, then IPv6 when enabled).
+func NewDevicePeer(publicKey string, addresses ...string) Peer {
+	allowed := make([]string, 0, len(addresses))
+	for _, a := range addresses {
+		allowed = append(allowed, hostIPWithCIDR(a))
+	}
 	return Peer{
 		PublicKey:  publicKey,
-		AllowedIPs: []string{hostIPWithCIDR(assignedIP)},
+		AllowedIPs: allowed,
 	}
 }
 

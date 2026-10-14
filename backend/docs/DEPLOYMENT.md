@@ -253,6 +253,8 @@ JWT_EXPIRATION_HOURS=2160
 WG_DNS=1.1.1.1,8.8.8.8
 WG_ALLOWED_IPS=0.0.0.0/0,::/0
 WG_KEEPALIVE=25
+WG_MTU=1280                 # MTU du tunnel client ; 1280 évite la fragmentation partout
+WG_IPV6_PREFIX=fd7a:5f1c:9e42::/64   # IPv6 dans le tunnel (« off » pour désactiver) ; identique sur les serveurs VPN
 
 # Lien vers les agents
 AGENT_TOKEN=<contenu de /etc/wg-api/agent.token>

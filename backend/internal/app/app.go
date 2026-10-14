@@ -40,6 +40,8 @@ func New(cfg *config.Config) *App {
 		cfg.WireGuard.DNS,
 		cfg.WireGuard.AllowedIPs,
 		cfg.WireGuard.Keepalive,
+		cfg.WireGuard.MTU,
+		cfg.WireGuard.IPv6Prefix,
 	)
 	if err != nil {
 		log.Fatalf("invalid wireguard configuration: %v", err)
@@ -65,7 +67,7 @@ func New(cfg *config.Config) *App {
 	orch := orchestrator.New(
 		orchestrator.NewPool(dialer),
 		orchestrator.NewServerSource(serverService),
-		orchestrator.NewPeerSource(deviceRepo),
+		orchestrator.NewPeerSource(deviceRepo, wgSettings),
 	)
 
 	deviceService := device.NewService(deviceRepo, serverService, wgSettings, orch)

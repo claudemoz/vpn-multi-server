@@ -35,6 +35,8 @@ type WireGuardConfig struct {
 	DNS        string
 	AllowedIPs string
 	Keepalive  int
+	MTU        int
+	IPv6Prefix string
 }
 
 // AgentConfig drives the gRPC communication between the control plane and the
@@ -91,6 +93,13 @@ func Load() *Config {
 			DNS:        getEnv("WG_DNS", "1.1.1.1,8.8.8.8"),
 			AllowedIPs: getEnv("WG_ALLOWED_IPS", "0.0.0.0/0,::/0"),
 			Keepalive:  getEnvAsInt("WG_KEEPALIVE", 25),
+			// 1280 fits every path (mobile networks, PPPoE, IPv6 endpoints):
+			// oversized packets get silently dropped and stall TCP, which costs
+			// far more than the few bytes of header overhead saved by a higher MTU.
+			MTU: getEnvAsInt("WG_MTU", 1280),
+			// ULA prefix for device IPv6 tunnel addresses; "off" disables IPv6
+			// in the tunnel. Must match WG_IPV6_PREFIX on the VPN servers.
+			IPv6Prefix: ipv6Prefix(getEnv("WG_IPV6_PREFIX", "fd7a:5f1c:9e42::/64")),
 		},
 		Agent: AgentConfig{
 			Token:         getEnv("AGENT_TOKEN", ""),
@@ -109,6 +118,15 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// ipv6Prefix maps "off" to "" so IPv6 can be disabled explicitly (an empty
+// variable falls back to the default prefix, like every other setting).
+func ipv6Prefix(v string) string {
+	if v == "off" {
+		return ""
+	}
+	return v
 }
 
 func getEnvAsInt(key string, fallback int) int {

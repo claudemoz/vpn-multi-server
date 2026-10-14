@@ -30,3 +30,26 @@ func TestRenderClientConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestSettingsClientConfigMTU(t *testing.T) {
+	s, err := NewSettings("10.8.0.0/24", "1.1.1.1", "0.0.0.0/0", 25, 1280, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config := s.ClientConfig("k", "10.8.0.5", "server-public-key", "vpn.example.com:51820")
+	if !strings.Contains(config, "MTU = 1280") {
+		t.Fatalf("expected MTU in config, got:\n%s", config)
+	}
+
+	s, err = NewSettings("10.8.0.0/24", "1.1.1.1", "0.0.0.0/0", 25, 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config := s.ClientConfig("k", "10.8.0.5", "pk", "vpn.example.com:51820"); strings.Contains(config, "MTU") {
+		t.Fatalf("expected no MTU line when mtu is 0, got:\n%s", config)
+	}
+
+	if _, err := NewSettings("10.8.0.0/24", "1.1.1.1", "0.0.0.0/0", 25, 1000, ""); err == nil {
+		t.Fatal("expected an error for an mtu below 1280")
+	}
+}

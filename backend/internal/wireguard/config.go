@@ -11,8 +11,10 @@ const PrivateKeyPlaceholder = "<CLIENT_PRIVATE_KEY>"
 
 // ClientConfigInput describes everything needed to render a client wg-quick config.
 type ClientConfigInput struct {
-	PrivateKey      string
-	AssignedIP      string
+	PrivateKey string
+	AssignedIP string
+	// AssignedIPv6 is optional; when set the interface is dual-stack.
+	AssignedIPv6    string
 	DNS             []string
 	MTU             int
 	ServerPublicKey string
@@ -32,7 +34,11 @@ func RenderClientConfig(in ClientConfigInput) string {
 	var b strings.Builder
 	b.WriteString("[Interface]\n")
 	fmt.Fprintf(&b, "PrivateKey = %s\n", privateKey)
-	fmt.Fprintf(&b, "Address = %s\n", hostIPWithCIDR(in.AssignedIP))
+	address := hostIPWithCIDR(in.AssignedIP)
+	if in.AssignedIPv6 != "" {
+		address += ", " + hostIPWithCIDR(in.AssignedIPv6)
+	}
+	fmt.Fprintf(&b, "Address = %s\n", address)
 	if len(in.DNS) > 0 {
 		fmt.Fprintf(&b, "DNS = %s\n", strings.Join(in.DNS, ", "))
 	}

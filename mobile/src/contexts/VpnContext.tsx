@@ -13,7 +13,7 @@ import { AppState } from 'react-native';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { ApiClientError, deviceApi, serverApi } from '@/services/api';
-import { pickBestServer } from '@/services/server-select';
+import { measureLatencies, pickBestServer, type Latencies } from '@/services/server-select';
 import * as storage from '@/services/storage';
 import {
   connectTunnelFromConfig,
@@ -35,6 +35,8 @@ export type ConnectionStatus = TunnelPhase;
 
 type VpnContextValue = {
   servers: Server[];
+  /** Measured round trip to each server (ms), by server id. */
+  latencies: Latencies;
   /** Server used for the next connection (picked by the app when `autoSelect`). */
   selectedServer: Server | null;
   autoSelect: boolean;
@@ -137,7 +139,16 @@ async function prepareTunnel(token: string, server: Server): Promise<PreparedTun
     try {
       const device = await deviceApi.get(token, deviceId, 5_000);
       if (device.revoked_at) return createDevice(token, server);
-      return { config, privateKey, assignedIp: device.assigned_ip ?? extractIp(config) };
+      // Re-render the config so a device kept from an older version picks up
+      // the current tunnel settings (IPv6 address, MTU, DNS).
+      const fresh = await deviceApi
+        .config(token, deviceId)
+        .then((raw) => injectKey(raw, privateKey))
+        .catch(() => config);
+      if (fresh !== config) {
+        await storage.saveVpnSession({ deviceId, serverId: server.id, config: fresh, privateKey });
+      }
+      return { config: fresh, privateKey, assignedIp: device.assigned_ip ?? extractIp(fresh) };
     } catch (e) {
       if (isGone(e)) return createDevice(token, server);
       // API unreachable: the stored config is still valid for the tunnel.
@@ -160,6 +171,9 @@ async function prepareTunnel(token: string, server: Server): Promise<PreparedTun
 export function VpnProvider({ children }: { children: ReactNode }) {
   const { token } = useAuth();
   const [servers, setServers] = useState<Server[]>([]);
+  const [latencies, setLatencies] = useState<Latencies>({});
+  // Read by refreshServers without making it change on every measurement.
+  const latenciesRef = useRef<Latencies>({});
   const [selectedServer, setSelectedServer] = useState<Server | null>(null);
   const [autoSelect, setAutoSelect] = useState(true);
   const [status, setStatus] = useState<ConnectionStatus>('disconnected');
@@ -275,13 +289,32 @@ export function VpnProvider({ children }: { children: ReactNode }) {
     return () => sub.remove();
   }, [syncFromNative]);
 
+  /**
+   * Measures the latency to each server and, in automatic mode, moves the
+   * selection to the fastest one. Only runs while the tunnel is down: through
+   * the tunnel every probe would go via the current server.
+   */
+  const measureServers = useCallback(async (active: Server[]) => {
+    if (active.length < 2 || busyRef.current) return;
+    if (phaseOf(await getTunnelStatus()) !== 'disconnected') return;
+
+    const measured = await measureLatencies(active);
+    if (Object.keys(measured).length === 0 || busyRef.current) return;
+    latenciesRef.current = measured;
+    setLatencies(measured);
+    if (await storage.getAutoSelect()) {
+      setSelectedServer((prev) => pickBestServer(active, prev, measured));
+    }
+  }, []);
+
   const refreshServers = useCallback(async () => {
     if (!token) return;
     setIsLoadingServers(true);
     setError(null);
+    let active: Server[] = [];
     try {
       const list = await serverApi.list(token);
-      const active = list.filter((s) => s.is_active);
+      active = list.filter((s) => s.is_active);
       setServers(active);
 
       const [session, auto] = await Promise.all([storage.getVpnSession(), storage.getAutoSelect()]);
@@ -289,7 +322,7 @@ export function VpnProvider({ children }: { children: ReactNode }) {
       setSelectedServer((prev) => {
         const saved = session.serverId ? active.find((s) => s.id === session.serverId) : undefined;
         const current = prev && active.some((s) => s.id === prev.id) ? prev : (saved ?? null);
-        if (auto) return pickBestServer(active, current);
+        if (auto) return pickBestServer(active, current, latenciesRef.current);
         return current ?? active[0] ?? null;
       });
     } catch (e) {
@@ -297,7 +330,10 @@ export function VpnProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoadingServers(false);
     }
-  }, [token]);
+    // In the background: the list is usable right away, the measurement only
+    // refines the automatic choice.
+    measureServers(active).catch(() => {});
+  }, [token, measureServers]);
 
   useEffect(() => {
     refreshServers();
@@ -318,9 +354,9 @@ export function VpnProvider({ children }: { children: ReactNode }) {
     if (busyRef.current || status !== 'disconnected') return;
     setAutoSelect(true);
     storage.setAutoSelect(true).catch(() => {});
-    setSelectedServer((prev) => pickBestServer(servers, prev));
+    setSelectedServer((prev) => pickBestServer(servers, prev, latencies));
     setError(null);
-  }, [status, servers]);
+  }, [status, servers, latencies]);
 
   const waitForPhase = useCallback(
     async (target: TunnelPhase, timeoutMs: number, isStale: () => boolean): Promise<boolean> => {
@@ -360,7 +396,7 @@ export function VpnProvider({ children }: { children: ReactNode }) {
 
   const connect = useCallback(async () => {
     if (busyRef.current) return;
-    const server = autoSelect ? pickBestServer(servers, selectedServer) : selectedServer;
+    const server = autoSelect ? pickBestServer(servers, selectedServer, latencies) : selectedServer;
     if (!token || !server) {
       setError('Sélectionnez un serveur');
       return;
@@ -436,6 +472,7 @@ export function VpnProvider({ children }: { children: ReactNode }) {
   }, [
     token,
     servers,
+    latencies,
     selectedServer,
     autoSelect,
     tunnelAvailable,
@@ -475,6 +512,7 @@ export function VpnProvider({ children }: { children: ReactNode }) {
   const value = useMemo(
     () => ({
       servers,
+      latencies,
       selectedServer,
       autoSelect,
       status,
@@ -491,6 +529,7 @@ export function VpnProvider({ children }: { children: ReactNode }) {
     }),
     [
       servers,
+      latencies,
       selectedServer,
       autoSelect,
       status,

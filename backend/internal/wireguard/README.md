@@ -100,7 +100,7 @@ Le pool est **sans état** : il ne mémorise rien entre deux appels. C'est la ba
 ### Détails utiles
 
 - `normalizeHostIP("10.8.0.5/32")` → `"10.8.0.5"` - accepte indifféremment une IP nue ou en notation CIDR.
-- `hostIPWithCIDR("10.8.0.5")` → `"10.8.0.5/32"` - ajoute le `/32` requis dans les fichiers de configuration.
+- `hostIPWithCIDR("10.8.0.5")` → `"10.8.0.5/32"` (et `/128` pour une IPv6) - ajoute le préfixe d'hôte requis dans les fichiers de configuration.
 - `Contains` vérifie qu'une IP fournie manuellement appartient bien au subnet.
 
 ---
@@ -180,7 +180,7 @@ Trois structures :
 - **`PeerStatus`** - l'état *observé* : `Peer` + date du dernier handshake + octets reçus/émis. C'est ce qu'on lit depuis l'interface.
 - **`InterfaceStatus`** - l'état d'une interface complète (`wg0`) et de tous ses peers.
 
-`NewDevicePeer(publicKey, ip)` construit le peer serveur d'un appareil avec `AllowedIPs = [ip/32]` - c'est l'unique traduction Device → Peer dont l'agent aura besoin.
+`NewDevicePeer(publicKey, addresses...)` construit le peer serveur d'un appareil avec une entrée hôte par adresse (`ip/32`, `ipv6/128`). Côté API on passe par `Settings.DevicePeer`, qui ajoute l'IPv6 dérivée (`DeviceIPv6` : l'IPv4 du device dans les 32 bits bas de `WG_IPV6_PREFIX`, donc rien à stocker ni à allouer).
 
 `PeerStatus.IsOnline(3 * time.Minute)` répond « oui » si un handshake a eu lieu dans la fenêtre. WireGuard renégocie environ toutes les 2 minutes quand il y a du trafic ; au-delà de 3 minutes sans handshake, le peer est considéré déconnecté.
 

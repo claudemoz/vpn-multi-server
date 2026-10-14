@@ -55,11 +55,12 @@ func (s *serverSource) SetCurrentPeers(id uuid.UUID, count int) error {
 // peerSource adapts device.Repository to PeerSource.
 type peerSource struct {
 	repo *device.Repository
+	wg   *wireguard.Settings
 }
 
 // NewPeerSource exposes the device table to the orchestrator.
-func NewPeerSource(repo *device.Repository) PeerSource {
-	return &peerSource{repo: repo}
+func NewPeerSource(repo *device.Repository, wg *wireguard.Settings) PeerSource {
+	return &peerSource{repo: repo, wg: wg}
 }
 
 func (p *peerSource) DesiredPeers(serverID uuid.UUID) ([]wireguard.Peer, error) {
@@ -70,7 +71,7 @@ func (p *peerSource) DesiredPeers(serverID uuid.UUID) ([]wireguard.Peer, error) 
 
 	peers := make([]wireguard.Peer, 0, len(devices))
 	for _, d := range devices {
-		peers = append(peers, wireguard.NewDevicePeer(d.PublicKey, d.AssignedIP))
+		peers = append(peers, p.wg.DevicePeer(d.PublicKey, d.AssignedIP))
 	}
 	return peers, nil
 }

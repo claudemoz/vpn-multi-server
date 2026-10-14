@@ -2,6 +2,11 @@ import type { WireGuardConfig } from 'react-native-wireguard-vpn';
 
 import { PrivateKeyPlaceholder } from '@/services/wg-constants';
 
+// Used when the config has no MTU (configs saved before the API sent one).
+// Without it Android keeps a 1500 MTU, too large once encapsulated: big
+// packets get dropped and TCP stalls. Must match WG_MTU on the API.
+const DEFAULT_MTU = 1280;
+
 type WgSections = Record<string, Record<string, string>>;
 
 function parseSections(configText: string): WgSections {
@@ -74,11 +79,13 @@ export function wgQuickToNativeConfig(
   }
 
   const dns = splitList(iface.DNS);
-  const address = iface.Address;
-
-  if (!address) {
+  // Dual-stack configs list an IPv4 and an IPv6 address. Android only splits
+  // an array, so pass one when there are several (iOS accepts both).
+  const addresses = splitList(iface.Address);
+  if (addresses.length === 0) {
     throw new Error('Config WireGuard invalide : Address manquante');
   }
+  const address = addresses.length === 1 ? addresses[0] : addresses;
 
   // Android reads optional keys with hasKey() then getInt()/getArray(): a key
   // present with a null value crashes the native module, so omit it entirely.
@@ -92,7 +99,7 @@ export function wgQuickToNativeConfig(
   };
   if (dns.length > 0) config.dns = dns;
   const mtu = iface.MTU ? Number.parseInt(iface.MTU, 10) : Number.NaN;
-  if (Number.isFinite(mtu)) config.mtu = mtu;
+  config.mtu = Number.isFinite(mtu) ? mtu : DEFAULT_MTU;
   if (peer.PresharedKey) config.presharedKey = peer.PresharedKey;
   return config;
 }
